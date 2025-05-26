@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VH NM Item Marker
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.5
 // @description  Marks Vine items (dbl-click). Ctrl+Click "Go to Marked" button to clear all marks (if marked item is hidden/truncated)
 // @author       BSRFD
 // @match        https://www.amazon.ca/vine/vine-items*
@@ -24,7 +24,7 @@
     const ITEM_SELECTOR = '.vvp-item-tile.vh-gridview';
     const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue';
     const GO_TO_MARKED_BUTTON_ID = 'vh-nm-go-to-marked-button';
-    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.4_${window.location.hostname}`;
+    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.5_${window.location.hostname}`;
     const DOUBLE_CLICK_TIMEOUT = 300;
 
     const COLOR_SCHEMES = {
@@ -35,7 +35,7 @@
         "fiery_red": { name: "Fiery Red", markedItemBg: '#ffccd5', markedItemBorder: '#d90429', goToButtonBg: '#ef233c', goToButtonHoverBg: '#bc1823' },
         "royal_purple": { name: "Royal Purple", markedItemBg: '#e0c3fc', markedItemBorder: '#7b2cbf', goToButtonBg: '#5a189a', goToButtonHoverBg: '#3c096c' }
     };
-    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.4_${window.location.hostname}`;
+    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.5_${window.location.hostname}`;
     let currentColorScheme = COLOR_SCHEMES["vibrant_blue"];
     let dynamicStyleTag = null;
 
@@ -58,7 +58,9 @@
     `);
 
     // --- DYNAMIC STYLES & CONFIG ---
-    function updateDynamicStyles() {
+    function updateDynamicStyles(schemeToApply) {
+        const activeScheme = schemeToApply || currentColorScheme;
+
         if (!dynamicStyleTag) {
             dynamicStyleTag = document.createElement('style');
             dynamicStyleTag.id = 'vh-nm-marker-dynamic-styles';
@@ -66,28 +68,30 @@
         }
         dynamicStyleTag.textContent = `
             .${MARKED_ITEM_CLASS_BLUE} {
-                background-color: ${currentColorScheme.markedItemBg} !important;
-                border: 2px solid ${currentColorScheme.markedItemBorder} !important;
-                box-shadow: 0 0 10px ${currentColorScheme.markedItemBorder} !important;
+                background-color: ${activeScheme.markedItemBg} !important;
+                border: 2px solid ${activeScheme.markedItemBorder} !important;
+                box-shadow: 0 0 10px ${activeScheme.markedItemBorder} !important;
             }
             #${GO_TO_MARKED_BUTTON_ID} {
                 position: fixed; bottom: 20px; right: 20px;
                 color: white; padding: 10px 15px; border: none; border-radius: 5px;
                 cursor: pointer; z-index: 1001; display: none;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                background-color: ${currentColorScheme.goToButtonBg};
+                background-color: ${activeScheme.goToButtonBg};
             }
             #${GO_TO_MARKED_BUTTON_ID}:hover {
-                background-color: ${currentColorScheme.goToButtonHoverBg};
+                background-color: ${activeScheme.goToButtonHoverBg};
             }
         `;
-        updateGoToButtonVisibility();
+        if (activeScheme === currentColorScheme) {
+            updateGoToButtonVisibility();
+        }
     }
 
     function loadConfig() {
         const savedSchemeName = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
         currentColorScheme = COLOR_SCHEMES[savedSchemeName] || COLOR_SCHEMES["vibrant_blue"];
-        updateDynamicStyles();
+        updateDynamicStyles(currentColorScheme);
     }
 
     // --- LOCALSTORAGE FUNCTIONS ---
@@ -186,10 +190,17 @@
     // --- Config Panel ---
     function showColorSchemeConfigPanel() {
         let panel = document.getElementById('vh-nm-scheme-config-panel');
+        let selectElement = null;
+        const originalSavedSchemeKey = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
+        const originalSavedScheme = COLOR_SCHEMES[originalSavedSchemeKey] || COLOR_SCHEMES["vibrant_blue"];
+
         if (panel) {
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
             if (panel.style.display === 'block') {
-                document.getElementById('cfgColorSchemeSelect').value = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
+                selectElement = document.getElementById('cfgColorSchemeSelect');
+                if (selectElement) { selectElement.value = originalSavedSchemeKey; }
+                // Revert to original saved scheme visually if panel was closed without saving a preview
+                updateDynamicStyles(originalSavedScheme); // Explicitly pass original to revert preview
             }
             return;
         }
@@ -197,18 +208,27 @@
         panel.id = 'vh-nm-scheme-config-panel';
         panel.style.cssText = `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: #f0f0f0; border: 1px solid #ccc; padding: 20px; z-index: 2000; box-shadow: 0 0 15px rgba(0,0,0,0.3); border-radius: 5px; font-family: Arial, sans-serif; min-width: 300px;`;
         let selectHTML = '<select id="cfgColorSchemeSelect" style="padding: 8px; margin-bottom: 15px; width: 100%; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">';
-        const currentSelectedKey = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
-        for (const key in COLOR_SCHEMES) { selectHTML += `<option value="${key}" ${key === currentSelectedKey ? 'selected' : ''}>${COLOR_SCHEMES[key].name}</option>`; }
+        for (const key in COLOR_SCHEMES) { selectHTML += `<option value="${key}" ${key === originalSavedSchemeKey ? 'selected' : ''}>${COLOR_SCHEMES[key].name}</option>`; }
         selectHTML += '</select>';
-        panel.innerHTML = `<h3 style="margin-top:0; margin-bottom:15px; text-align:center; color: #333;">Select Color Scheme</h3> ${selectHTML} <div style="text-align: right;"> <button id="cfgSaveScheme" style="padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Save</button> <button id="cfgCloseSchemePanel" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button> </div>`;
+        panel.innerHTML = `<h3 style="margin-top:0; margin-bottom:15px; text-align:center; color: #333;">Select Color Scheme (Live Preview)</h3> ${selectHTML} <div style="text-align: right;"> <button id="cfgSaveScheme" style="padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Save</button> <button id="cfgCloseSchemePanel" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button> </div>`;
         document.body.appendChild(panel);
-        document.getElementById('cfgSaveScheme').addEventListener('click', () => {
-            const selectedSchemeKey = document.getElementById('cfgColorSchemeSelect').value;
-            GM_setValue(CONFIG_KEY_SELECTED_SCHEME, selectedSchemeKey);
-            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || COLOR_SCHEMES["vibrant_blue"];
-            updateDynamicStyles(); panel.style.display = 'none'; alert('Color scheme saved!');
+        selectElement = document.getElementById('cfgColorSchemeSelect');
+        selectElement.addEventListener('change', () => {
+            const previewSchemeKey = selectElement.value;
+            const previewScheme = COLOR_SCHEMES[previewSchemeKey] || originalSavedScheme;
+            updateDynamicStyles(previewScheme);
         });
-        document.getElementById('cfgCloseSchemePanel').addEventListener('click', () => { panel.style.display = 'none'; });
+        document.getElementById('cfgSaveScheme').addEventListener('click', () => {
+            const selectedSchemeKey = selectElement.value;
+            GM_setValue(CONFIG_KEY_SELECTED_SCHEME, selectedSchemeKey);
+            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || originalSavedScheme;
+            updateDynamicStyles(currentColorScheme);
+            panel.style.display = 'none';
+        });
+        document.getElementById('cfgCloseSchemePanel').addEventListener('click', () => {
+            updateDynamicStyles(originalSavedScheme);
+            panel.style.display = 'none';
+        });
     }
 
     function handleGoToMarkedButtonClick(event) {
@@ -230,9 +250,9 @@
             document.body.appendChild(goToButton);
             goToButton.addEventListener('click', handleGoToMarkedButtonClick);
         } else {
-            goToButton.removeEventListener('click', scrollToNextMarkedItem); // Old specific one
-            goToButton.removeEventListener('click', handleGoToMarkedButtonClick); // This one
-            goToButton.addEventListener('click', handleGoToMarkedButtonClick); // Add the correct one
+            goToButton.removeEventListener('click', scrollToNextMarkedItem);
+            goToButton.removeEventListener('click', handleGoToMarkedButtonClick);
+            goToButton.addEventListener('click', handleGoToMarkedButtonClick);
         }
         const initialItems = document.querySelectorAll(ITEM_SELECTOR);
         initialItems.forEach(setupDoubleClickMarking);
