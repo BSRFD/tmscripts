@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         VH NM Item Marker
 // @namespace    http://tampermonkey.net/
-// @version      2.5
-// @description  Marks Vine items (dbl-click). Ctrl+Click "Go to Marked" button to clear all marks (if marked item is hidden/truncated)
+// @version      2.6
+// @description  Marks Vine items (dbl-click). Configurable color schemes. Ctrl+Click "Go to Marked" to clear.
 // @author       BSRFD
 // @match        https://www.amazon.ca/vine/vine-items*
 // @match        https://www.amazon.com/vine/vine-items*
@@ -24,7 +24,7 @@
     const ITEM_SELECTOR = '.vvp-item-tile.vh-gridview';
     const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue';
     const GO_TO_MARKED_BUTTON_ID = 'vh-nm-go-to-marked-button';
-    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.5_${window.location.hostname}`;
+    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.6_${window.location.hostname}`;
     const DOUBLE_CLICK_TIMEOUT = 300;
 
     const COLOR_SCHEMES = {
@@ -35,7 +35,7 @@
         "fiery_red": { name: "Fiery Red", markedItemBg: '#ffccd5', markedItemBorder: '#d90429', goToButtonBg: '#ef233c', goToButtonHoverBg: '#bc1823' },
         "royal_purple": { name: "Royal Purple", markedItemBg: '#e0c3fc', markedItemBorder: '#7b2cbf', goToButtonBg: '#5a189a', goToButtonHoverBg: '#3c096c' }
     };
-    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.5_${window.location.hostname}`;
+    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.6_${window.location.hostname}`;
     let currentColorScheme = COLOR_SCHEMES["vibrant_blue"];
     let dynamicStyleTag = null;
 
@@ -67,11 +67,24 @@
             document.head.appendChild(dynamicStyleTag);
         }
         dynamicStyleTag.textContent = `
-            .${MARKED_ITEM_CLASS_BLUE} {
+            .${MARKED_ITEM_CLASS_BLUE} { /* Base style for our marked items */
                 background-color: ${activeScheme.markedItemBg} !important;
                 border: 2px solid ${activeScheme.markedItemBorder} !important;
                 box-shadow: 0 0 10px ${activeScheme.markedItemBorder} !important;
+                opacity: 1 !important; /* Ensure full opacity by default */
+                filter: brightness(1) !important; /* Ensure full brightness by default */
             }
+
+            /* Rule to make marked items that VH has faded more visible */
+            /* This targets items that have our mark AND VH's fade styles */
+            ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity: 0.5"][style*="filter: brightness(0.7)"],
+            ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity:0.5"][style*="filter:brightness(0.7)"] /* no space */ {
+                opacity: 0.9 !important; /* Make it much less faded */
+                filter: brightness(0.95) !important; /* Make it much brighter */
+            }
+            /* You can adjust 0.9 and 0.95. Use 1 and brightness(1) for no fade at all. */
+
+
             #${GO_TO_MARKED_BUTTON_ID} {
                 position: fixed; bottom: 20px; right: 20px;
                 color: white; padding: 10px 15px; border: none; border-radius: 5px;
@@ -199,8 +212,7 @@
             if (panel.style.display === 'block') {
                 selectElement = document.getElementById('cfgColorSchemeSelect');
                 if (selectElement) { selectElement.value = originalSavedSchemeKey; }
-                // Revert to original saved scheme visually if panel was closed without saving a preview
-                updateDynamicStyles(originalSavedScheme); // Explicitly pass original to revert preview
+                updateDynamicStyles(originalSavedScheme);
             }
             return;
         }
