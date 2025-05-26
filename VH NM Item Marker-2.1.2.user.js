@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VH NM Item Marker
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.3.1
 // @description  Marks Vine items (dbl-click). Ctrl+Click "Go to Marked" button to clear all marks (if marked item is hidden/truncated)
 // @author       YourName
 // @match        https://www.amazon.ca/vine/vine-items*
@@ -22,7 +22,7 @@
 
     const ITEM_GRID_ID = 'vvp-items-grid';
     const ITEM_SELECTOR = '.vvp-item-tile.vh-gridview';
-    const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue'; // Class name remains, but its style is dynamic
+    const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue';
     const GO_TO_MARKED_BUTTON_ID = 'vh-nm-go-to-marked-button';
     const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.3_${window.location.hostname}`; // Key for marked ASINs
     const DOUBLE_CLICK_TIMEOUT = 300;
@@ -30,49 +30,49 @@
     const COLOR_SCHEMES = {
         "vibrant_blue": {
             name: "Vibrant Blue",
-            markedItemBg: '#8ecae6',    // A brighter, slightly cerulean blue
-            markedItemBorder: '#0077b6', // A strong, clear blue
-            goToButtonBg: '#023e8a',     // A deep, rich navy blue
-            goToButtonHoverBg: '#002855'  // Darker navy
+            markedItemBg: '#8ecae6',
+            markedItemBorder: '#0077b6',
+            goToButtonBg: '#023e8a',
+            goToButtonHoverBg: '#002855'
         },
         "bold_charcoal": {
             name: "Bold Charcoal",
-            markedItemBg: '#adb5bd',    // A noticeable light grey
-            markedItemBorder: '#343a40', // Dark charcoal / almost black
-            goToButtonBg: '#495057',     // A solid medium-dark grey
-            goToButtonHoverBg: '#343a40'  // Darker charcoal
+            markedItemBg: '#adb5bd',
+            markedItemBorder: '#343a40',
+            goToButtonBg: '#495057',
+            goToButtonHoverBg: '#343a40'
         },
         "electric_yellow": {
             name: "Electric Yellow",
-            markedItemBg: '#fff352',    // A bright, almost neon yellow
-            markedItemBorder: '#ffc300', // A strong, rich gold/yellow
-            goToButtonBg: '#ffaa00',     // A vibrant orange-yellow
-            goToButtonHoverBg: '#cc8400'  // Darker orange-yellow
+            markedItemBg: '#fff352',
+            markedItemBorder: '#ffc300',
+            goToButtonBg: '#ffaa00',
+            goToButtonHoverBg: '#cc8400'
         },
         "emerald_green": {
             name: "Emerald Green",
-            markedItemBg: '#a7f3d0',    // A bright, minty green
-            markedItemBorder: '#059669', // A rich emerald green
-            goToButtonBg: '#047857',     // A deep tealish green
-            goToButtonHoverBg: '#065f46'  // Darker tealish green
+            markedItemBg: '#a7f3d0',
+            markedItemBorder: '#059669',
+            goToButtonBg: '#047857',
+            goToButtonHoverBg: '#065f46'
         },
         "fiery_red": {
             name: "Fiery Red",
-            markedItemBg: '#ffccd5',    // Light pinkish red
-            markedItemBorder: '#d90429', // Strong, vibrant red
-            goToButtonBg: '#ef233c',     // Bright, slightly orangey red
-            goToButtonHoverBg: '#bc1823'  // Darker red
+            markedItemBg: '#ffccd5',
+            markedItemBorder: '#d90429',
+            goToButtonBg: '#ef233c',
+            goToButtonHoverBg: '#bc1823'
         },
         "royal_purple": {
             name: "Royal Purple",
-            markedItemBg: '#e0c3fc',    // Light lavender
-            markedItemBorder: '#7b2cbf', // Rich royal purple
-            goToButtonBg: '#5a189a',     // Deep violet
-            goToButtonHoverBg: '#3c096c'  // Darker violet
+            markedItemBg: '#e0c3fc',
+            markedItemBorder: '#7b2cbf',
+            goToButtonBg: '#5a189a',
+            goToButtonHoverBg: '#3c096c'
         }
     };
-    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.3_${window.location.hostname}`; // Key for selected scheme
-    let currentColorScheme = COLOR_SCHEMES["vibrant_blue"]; // Default, will be updated by loadConfig
+    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.3_${window.location.hostname}`;
+    let currentColorScheme = COLOR_SCHEMES["vibrant_blue"];
 
 
     let currentMarkedItemIndex = 0;
@@ -84,12 +84,12 @@
 
     // --- STYLES (Static part) ---
     GM_addStyle(`
-        .${MARKED_ITEM_CLASS_BLUE}::before { /* This can stay static or be made dynamic */
+        .${MARKED_ITEM_CLASS_BLUE}::before {
             content: '●';
             position: absolute;
             top: 2px;
             left: 2px;
-            color: darkblue; /* Consider making this dynamic too if schemes vary a lot */
+            color: darkblue;
             font-size: 14px;
             z-index: 101;
         }
@@ -127,12 +127,12 @@
                 background-color: ${currentColorScheme.goToButtonHoverBg};
             }
         `;
-        updateGoToButtonVisibility(); // Ensure button visibility/text is correct after style update
+        updateGoToButtonVisibility();
     }
 
     function loadConfig() {
-        const savedSchemeName = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue"); // Use new default key
-        currentColorScheme = COLOR_SCHEMES[savedSchemeName] || COLOR_SCHEMES["vibrant_blue"]; // Fallback
+        const savedSchemeName = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
+        currentColorScheme = COLOR_SCHEMES[savedSchemeName] || COLOR_SCHEMES["vibrant_blue"];
         updateDynamicStyles();
     }
 
@@ -144,7 +144,11 @@
             catch (e) { console.error("VH NM Item Marker: Error parsing stored ASINs.", e); persistedMarkedASINs = new Set(); localStorage.removeItem(STORAGE_KEY_MARKED_ASINS); }
         } else { persistedMarkedASINs = new Set(); }
     }
-    function saveMarksToStorage() { localStorage.setItem(STORAGE_KEY_MARKED_ASINS, JSON.stringify(Array.from(persistedMarkedASINs))); }
+    // saveMarksToStorage is NOT called by clearAllMarkedItems anymore.
+    // It's only called by toggleMarkItem.
+    function saveMarksToStorage() {
+        localStorage.setItem(STORAGE_KEY_MARKED_ASINS, JSON.stringify(Array.from(persistedMarkedASINs)));
+    }
 
     // --- HELPER FUNCTIONS ---
     function updateGoToButtonVisibility() {
@@ -171,7 +175,8 @@
         } else {
             persistedMarkedASINs.add(asin); applyMarkToItemDOM(item, markClass);
         }
-        saveMarksToStorage(); updateGoToButtonVisibility();
+        saveMarksToStorage(); // Save after toggling an individual item
+        updateGoToButtonVisibility();
     }
 
     function setupDoubleClickMarking(item) {
@@ -221,11 +226,22 @@
 
     // --- UTILITY FUNCTION for Clearing Marks ---
     function clearAllMarkedItems() {
-        if (confirm("Are you sure you want to clear all marked items for " + window.location.hostname + "?")) {
+        if (confirm("Are you sure you want to clear all marked items for " + window.location.hostname + "? This action cannot be undone.")) {
+            // 1. Visually unmark items currently in the DOM.
             const currentlyMarkedDOMItems = document.querySelectorAll(`.${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}`);
-            currentlyMarkedDOMItems.forEach(itemDOM => { removeMarkFromItemDOM(itemDOM, MARKED_ITEM_CLASS_BLUE); });
-            persistedMarkedASINs.clear(); saveMarksToStorage();
+            currentlyMarkedDOMItems.forEach(itemDOM => {
+                removeMarkFromItemDOM(itemDOM, MARKED_ITEM_CLASS_BLUE);
+            });
+
+            // 2. Clear the in-memory set.
+            persistedMarkedASINs.clear();
+
+            // 3. Explicitly remove the item from localStorage using the global constant.
+            localStorage.removeItem(STORAGE_KEY_MARKED_ASINS);
+
+            // 4. Update the "Go to Marked" button visibility (should hide it).
             updateGoToButtonVisibility();
+
             alert("All marked items for ".concat(window.location.hostname, " have been cleared."));
         }
     }
@@ -236,11 +252,10 @@
         if (panel) {
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
             if (panel.style.display === 'block') {
-                document.getElementById('cfgColorSchemeSelect').value = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue"); // Use new default
+                document.getElementById('cfgColorSchemeSelect').value = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
             }
             return;
         }
-
         panel = document.createElement('div');
         panel.id = 'vh-nm-scheme-config-panel';
         panel.style.cssText = `
@@ -249,14 +264,12 @@
             z-index: 2000; box-shadow: 0 0 15px rgba(0,0,0,0.3); border-radius: 5px;
             font-family: Arial, sans-serif; min-width: 300px;
         `;
-
         let selectHTML = '<select id="cfgColorSchemeSelect" style="padding: 8px; margin-bottom: 15px; width: 100%; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">';
-        const currentSelectedKey = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue"); // Use new default
+        const currentSelectedKey = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
         for (const key in COLOR_SCHEMES) {
             selectHTML += `<option value="${key}" ${key === currentSelectedKey ? 'selected' : ''}>${COLOR_SCHEMES[key].name}</option>`;
         }
         selectHTML += '</select>';
-
         panel.innerHTML = `
             <h3 style="margin-top:0; margin-bottom:15px; text-align:center; color: #333;">Select Color Scheme</h3>
             ${selectHTML}
@@ -266,16 +279,14 @@
             </div>
         `;
         document.body.appendChild(panel);
-
         document.getElementById('cfgSaveScheme').addEventListener('click', () => {
             const selectedSchemeKey = document.getElementById('cfgColorSchemeSelect').value;
             GM_setValue(CONFIG_KEY_SELECTED_SCHEME, selectedSchemeKey);
-            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || COLOR_SCHEMES["vibrant_blue"]; // Fallback to new default
+            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || COLOR_SCHEMES["vibrant_blue"];
             updateDynamicStyles();
             panel.style.display = 'none';
             alert('Color scheme saved!');
         });
-
         document.getElementById('cfgCloseSchemePanel').addEventListener('click', () => {
             panel.style.display = 'none';
         });
@@ -296,7 +307,6 @@
         }
         loadConfig();
         loadMarksFromStorage();
-
         let goToButton = document.getElementById(GO_TO_MARKED_BUTTON_ID);
         if (!goToButton) {
             goToButton = document.createElement('button'); goToButton.id = GO_TO_MARKED_BUTTON_ID;
@@ -307,10 +317,8 @@
             goToButton.removeEventListener('click', handleGoToMarkedButtonClick);
             goToButton.addEventListener('click', handleGoToMarkedButtonClick);
         }
-
         const initialItems = document.querySelectorAll(ITEM_SELECTOR);
         initialItems.forEach(setupDoubleClickMarking);
-        // updateGoToButtonVisibility(); // updateDynamicStyles now calls this
 
         const gridContainer = document.getElementById(ITEM_GRID_ID);
         if (gridContainer) {
