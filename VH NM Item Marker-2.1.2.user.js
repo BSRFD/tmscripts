@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         VH NM Item Marker
 // @namespace    http://tampermonkey.net/
-// @version      2.7
-// @description  Marks Vine items (dbl-click). Configurable color schemes. Ctrl+Click "Go to Marked" to clear.
+// @version      3.1
+// @description  Marks Vine items (dbl-click). Configurable color schemes with title text adjustment. Ctrl+Click "Go to Marked" to clear.
 // @author       BSRFD
 // @match        https://www.amazon.ca/vine/vine-items*
 // @match        https://www.amazon.com/vine/vine-items*
@@ -24,19 +24,19 @@
     const ITEM_SELECTOR = '.vvp-item-tile.vh-gridview';
     const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue';
     const GO_TO_MARKED_BUTTON_ID = 'vh-nm-go-to-marked-button';
-    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.7_${window.location.hostname}`; // Version bump
+    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v3.1_${window.location.hostname}`;
     const DOUBLE_CLICK_TIMEOUT = 300;
 
     const COLOR_SCHEMES = {
-        "vibrant_blue": { name: "Vibrant Blue", markedItemBg: '#8ecae6', markedItemBorder: '#0077b6', goToButtonBg: '#023e8a', goToButtonHoverBg: '#002855' },
-        "bold_charcoal": { name: "Bold Charcoal", markedItemBg: '#adb5bd', markedItemBorder: '#343a40', goToButtonBg: '#495057', goToButtonHoverBg: '#343a40' },
-        "electric_yellow": { name: "Electric Yellow", markedItemBg: '#fff352', markedItemBorder: '#ffc300', goToButtonBg: '#ffaa00', goToButtonHoverBg: '#cc8400' },
-        "emerald_green": { name: "Emerald Green", markedItemBg: '#a7f3d0', markedItemBorder: '#059669', goToButtonBg: '#047857', goToButtonHoverBg: '#065f46' },
-        "fiery_red": { name: "Fiery Red", markedItemBg: '#ffccd5', markedItemBorder: '#d90429', goToButtonBg: '#ef233c', goToButtonHoverBg: '#bc1823' },
-        "royal_purple": { name: "Royal Purple", markedItemBg: '#e0c3fc', markedItemBorder: '#7b2cbf', goToButtonBg: '#5a189a', goToButtonHoverBg: '#3c096c' }
+        "vibrant_blue": { name: "Vibrant Blue", markedItemBg: '#8ecae6', markedItemBorder: '#0077b6', goToButtonBg: '#023e8a', goToButtonHoverBg: '#002855', titleTextColor: '#000000' },
+        "bold_charcoal": { name: "Bold Charcoal", markedItemBg: '#adb5bd', markedItemBorder: '#343a40', goToButtonBg: '#495057', goToButtonHoverBg: '#343a40', titleTextColor: '#FFFFFF' },
+        "electric_yellow": { name: "Electric Yellow", markedItemBg: '#fff352', markedItemBorder: '#ffc300', goToButtonBg: '#ffaa00', goToButtonHoverBg: '#cc8400', titleTextColor: '#212529' },
+        "emerald_green": { name: "Emerald Green", markedItemBg: '#a7f3d0', markedItemBorder: '#059669', goToButtonBg: '#047857', goToButtonHoverBg: '#065f46', titleTextColor: '#000000' },
+        "fiery_red": { name: "Fiery Red", markedItemBg: '#ffccd5', markedItemBorder: '#d90429', goToButtonBg: '#ef233c', goToButtonHoverBg: '#bc1823', titleTextColor: '#000000' },
+        "royal_purple": { name: "Royal Purple", markedItemBg: '#e0c3fc', markedItemBorder: '#7b2cbf', goToButtonBg: '#5a189a', goToButtonHoverBg: '#3c096c', titleTextColor: '#000000' }
     };
-    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.7_${window.location.hostname}`; // Version bump
-    let currentColorScheme = COLOR_SCHEMES["vibrant_blue"];
+    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v3.1_${window.location.hostname}`;
+    let currentColorScheme = COLOR_SCHEMES["vibrant_blue"]; // This is the *saved* or default state
     let dynamicStyleTag = null;
 
     let currentMarkedItemIndex = 0;
@@ -59,7 +59,7 @@
 
     // --- DYNAMIC STYLES & CONFIG ---
     function updateDynamicStyles(schemeToApply) {
-        const activeScheme = schemeToApply || currentColorScheme;
+        const activeScheme = schemeToApply || currentColorScheme; // Use provided for preview, or current for general updates
 
         if (!dynamicStyleTag) {
             dynamicStyleTag = document.createElement('style');
@@ -74,11 +74,23 @@
                 opacity: 1 !important;
                 filter: brightness(1) !important;
             }
+
             ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity: 0.5"][style*="filter: brightness(0.7)"],
             ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity:0.5"][style*="filter:brightness(0.7)"] {
                 opacity: 0.9 !important;
                 filter: brightness(0.95) !important;
             }
+
+            /* Override text-shadow AND set text color for titles in marked items */
+            .${MARKED_ITEM_CLASS_BLUE} .vvp-item-product-title-container .a-link-normal {
+                color: ${activeScheme.titleTextColor || 'inherit'} !important;
+                text-shadow: none !important;
+            }
+            .${MARKED_ITEM_CLASS_BLUE} .vvp-item-product-title-container .a-link-normal span[class*="a-truncate"] {
+                color: ${activeScheme.titleTextColor || 'inherit'} !important; /* Ensure spans also get the color */
+                text-shadow: none !important;
+            }
+
             #${GO_TO_MARKED_BUTTON_ID} {
                 position: fixed; bottom: 20px; right: 20px;
                 color: white; padding: 10px 15px; border: none; border-radius: 5px;
@@ -90,6 +102,7 @@
                 background-color: ${activeScheme.goToButtonHoverBg};
             }
         `;
+        // Only update button text if we are applying the main currentColorScheme
         if (activeScheme === currentColorScheme) {
             updateGoToButtonVisibility();
         }
@@ -98,7 +111,7 @@
     function loadConfig() {
         const savedSchemeName = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
         currentColorScheme = COLOR_SCHEMES[savedSchemeName] || COLOR_SCHEMES["vibrant_blue"];
-        updateDynamicStyles(currentColorScheme);
+        updateDynamicStyles(currentColorScheme); // Apply the loaded or default scheme
     }
 
     // --- LOCALSTORAGE FUNCTIONS ---
@@ -138,60 +151,22 @@
         saveMarksToStorage(); updateGoToButtonVisibility();
     }
 
-    // --- MODIFIED setupDoubleClickMarking ---
     function setupDoubleClickMarking(item) {
-        if (!item || !item.dataset) {
-            // console.warn("VH NM Item Marker: setupDoubleClickMarking called with invalid item.", item);
-            return;
-        }
-        // Use a more specific dataset attribute to avoid conflict and ensure re-check if needed
+        if (!item || !item.dataset) { return; }
         const setupFlag = 'vhNmProcessedForMarking';
-
-        if (item.dataset[setupFlag] === 'true' && item.classList.contains(MARKED_ITEM_CLASS_BLUE) && persistedMarkedASINs.has(item.dataset.asin)) {
-            // Already set up and correctly marked, nothing to do
-            return;
-        }
-        // If it was marked as processed but isn't visually marked AND should be, we'll re-apply visual
-        // Or if it was never processed.
-
+        if (item.dataset[setupFlag] === 'true' && item.classList.contains(MARKED_ITEM_CLASS_BLUE) && persistedMarkedASINs.has(item.dataset.asin)) { return; }
         const asin = item.dataset.asin;
-        if (!asin) {
-            // console.warn("VH NM Item Marker: Item in setupDoubleClickMarking is missing data-asin.", item);
-            item.dataset[setupFlag] = 'true'; // Mark as processed to avoid loops on bad items
-            return;
-        }
-
-        // Apply visual mark if it's in persisted set
+        if (!asin) { item.dataset[setupFlag] = 'true'; return; }
         if (persistedMarkedASINs.has(asin)) {
-            if (!item.classList.contains(MARKED_ITEM_CLASS_BLUE)) {
-                // console.log("VH NM Item Marker: Re-applying visual mark to ASIN:", asin);
-                applyMarkToItemDOM(item);
-            }
+            if (!item.classList.contains(MARKED_ITEM_CLASS_BLUE)) { applyMarkToItemDOM(item); }
         } else {
-            // Ensure it's not visually marked if it's not in our persisted set
-            if (item.classList.contains(MARKED_ITEM_CLASS_BLUE)) {
-                // console.log("VH NM Item Marker: Removing lingering visual mark from ASIN:", asin);
-                removeMarkFromItemDOM(item);
-            }
+            if (item.classList.contains(MARKED_ITEM_CLASS_BLUE)) { removeMarkFromItemDOM(item); }
         }
-
-        // Add event listener only if not already added (or if we want to ensure it's the correct one)
-        // A simple way is to remove then add, or check for a specific listener if possible (hard)
-        // For now, let's rely on the setupFlag for the initial pass,
-        // but if an item is re-added, it might need listeners re-attached if the element is new.
-        // The current MutationObserver logic will call this for new DOM elements.
-
-        // If we are re-processing an item that somehow lost its listener but kept the flag,
-        // it's safer to remove any old one and add anew, but that's complex.
-        // Let's assume for now if the flag is set, the listener is also set.
-        // The main goal here is to ensure visual consistency if an item is re-added.
-
-        if (item.dataset[setupFlag] !== 'true') { // Only add listener once per DOM element instance
+        if (item.dataset[setupFlag] !== 'true') {
             item.addEventListener('click', function(event) {
                 const asinForClick = this.dataset.asin;
                 if (!asinForClick) return;
                 if (event.target.tagName === 'A' || event.target.closest('A')) { return; }
-
                 if (!clickTimers[asinForClick]) {
                     clickTimers[asinForClick] = setTimeout(() => { delete clickTimers[asinForClick]; }, DOUBLE_CLICK_TIMEOUT);
                 } else {
@@ -202,8 +177,6 @@
         }
         item.dataset[setupFlag] = 'true';
     }
-    // --- END MODIFIED ---
-
 
     function scrollToNextMarkedItem() {
         const visibleMarkedItems = [];
@@ -243,18 +216,19 @@
         }
     }
 
+    // --- Config Panel ---
     function showColorSchemeConfigPanel() {
         let panel = document.getElementById('vh-nm-scheme-config-panel');
         let selectElement = null;
-        const originalSavedSchemeKey = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
-        const originalSavedScheme = COLOR_SCHEMES[originalSavedSchemeKey] || COLOR_SCHEMES["vibrant_blue"];
+        const originalSavedSchemeKeyOnOpen = GM_getValue(CONFIG_KEY_SELECTED_SCHEME, "vibrant_blue");
+        const originalSavedSchemeObjectOnOpen = COLOR_SCHEMES[originalSavedSchemeKeyOnOpen] || COLOR_SCHEMES["vibrant_blue"];
 
         if (panel) {
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
             if (panel.style.display === 'block') {
                 selectElement = document.getElementById('cfgColorSchemeSelect');
-                if (selectElement) { selectElement.value = originalSavedSchemeKey; }
-                updateDynamicStyles(originalSavedScheme);
+                if (selectElement) { selectElement.value = originalSavedSchemeKeyOnOpen; }
+                updateDynamicStyles(originalSavedSchemeObjectOnOpen); // Revert to saved on show
             }
             return;
         }
@@ -262,25 +236,26 @@
         panel.id = 'vh-nm-scheme-config-panel';
         panel.style.cssText = `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: #f0f0f0; border: 1px solid #ccc; padding: 20px; z-index: 2000; box-shadow: 0 0 15px rgba(0,0,0,0.3); border-radius: 5px; font-family: Arial, sans-serif; min-width: 300px;`;
         let selectHTML = '<select id="cfgColorSchemeSelect" style="padding: 8px; margin-bottom: 15px; width: 100%; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">';
-        for (const key in COLOR_SCHEMES) { selectHTML += `<option value="${key}" ${key === originalSavedSchemeKey ? 'selected' : ''}>${COLOR_SCHEMES[key].name}</option>`; }
+        for (const key in COLOR_SCHEMES) { selectHTML += `<option value="${key}" ${key === originalSavedSchemeKeyOnOpen ? 'selected' : ''}>${COLOR_SCHEMES[key].name}</option>`; }
         selectHTML += '</select>';
         panel.innerHTML = `<h3 style="margin-top:0; margin-bottom:15px; text-align:center; color: #333;">Select Color Scheme (Live Preview)</h3> ${selectHTML} <div style="text-align: right;"> <button id="cfgSaveScheme" style="padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Save</button> <button id="cfgCloseSchemePanel" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button> </div>`;
         document.body.appendChild(panel);
         selectElement = document.getElementById('cfgColorSchemeSelect');
+
         selectElement.addEventListener('change', () => {
             const previewSchemeKey = selectElement.value;
-            const previewScheme = COLOR_SCHEMES[previewSchemeKey] || originalSavedScheme;
-            updateDynamicStyles(previewScheme);
+            const previewSchemeObject = COLOR_SCHEMES[previewSchemeKey] || originalSavedSchemeObjectOnOpen;
+            updateDynamicStyles(previewSchemeObject); // Pass object for preview
         });
         document.getElementById('cfgSaveScheme').addEventListener('click', () => {
             const selectedSchemeKey = selectElement.value;
             GM_setValue(CONFIG_KEY_SELECTED_SCHEME, selectedSchemeKey);
-            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || originalSavedScheme;
-            updateDynamicStyles(currentColorScheme);
+            currentColorScheme = COLOR_SCHEMES[selectedSchemeKey] || originalSavedSchemeObjectOnOpen; // Update global
+            updateDynamicStyles(currentColorScheme); // Apply saved
             panel.style.display = 'none';
         });
         document.getElementById('cfgCloseSchemePanel').addEventListener('click', () => {
-            updateDynamicStyles(originalSavedScheme);
+            updateDynamicStyles(originalSavedSchemeObjectOnOpen); // Revert to original
             panel.style.display = 'none';
         });
     }
@@ -308,63 +283,33 @@
             goToButton.removeEventListener('click', handleGoToMarkedButtonClick);
             goToButton.addEventListener('click', handleGoToMarkedButtonClick);
         }
-
-        // Process initially loaded items
         document.querySelectorAll(ITEM_SELECTOR).forEach(setupDoubleClickMarking);
-
         const gridContainer = document.getElementById(ITEM_GRID_ID);
         if (gridContainer) {
-            // --- MODIFIED MutationObserver Callback ---
             const observer = new MutationObserver(mutationsList => {
                 let itemsProcessedInThisMutation = false;
                 for (const mutation of mutationsList) {
                     if (mutation.type === 'childList') {
                         mutation.addedNodes.forEach(node => {
                             if (node.nodeType === Node.ELEMENT_NODE) {
-                                // Check the node itself
-                                if (node.matches(ITEM_SELECTOR)) {
-                                    try {
-                                        setupDoubleClickMarking(node);
-                                        itemsProcessedInThisMutation = true;
-                                    } catch (e) {
-                                        console.error("VH NM Item Marker: Error in setupDoubleClickMarking for added node:", e, node);
-                                    }
-                                }
-                                // Check descendants of the added node
-                                node.querySelectorAll(ITEM_SELECTOR).forEach(itemNode => {
-                                    try {
-                                        setupDoubleClickMarking(itemNode);
-                                        itemsProcessedInThisMutation = true;
-                                    } catch (e) {
-                                        console.error("VH NM Item Marker: Error in setupDoubleClickMarking for descendant node:", e, itemNode);
-                                    }
-                                });
+                                if (node.matches(ITEM_SELECTOR)) { try { setupDoubleClickMarking(node); itemsProcessedInThisMutation = true; } catch (e) { console.error("VH NM Item Marker: Error in setup (direct node):", e, node); } }
+                                else { node.querySelectorAll(ITEM_SELECTOR).forEach(itemNode => { try { setupDoubleClickMarking(itemNode); itemsProcessedInThisMutation = true; } catch (e) { console.error("VH NM Item Marker: Error in setup (descendant):", e, itemNode); } }); }
                             }
                         });
-                        // Check if a marked item was removed from DOM
-                        mutation.removedNodes.forEach(node => {
-                            if (node.nodeType === Node.ELEMENT_NODE && node.dataset && persistedMarkedASINs.has(node.dataset.asin)) {
-                                itemsProcessedInThisMutation = true; // To trigger button update
-                            }
-                        });
+                        mutation.removedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && node.dataset && persistedMarkedASINs.has(node.dataset.asin)) { itemsProcessedInThisMutation = true; } });
                     }
                 }
-                if (itemsProcessedInThisMutation) {
-                    updateGoToButtonVisibility();
-                }
+                if (itemsProcessedInThisMutation) { updateGoToButtonVisibility(); }
             });
-            // --- END MODIFIED ---
             observer.observe(gridContainer, { childList: true, subtree: true });
         } else { console.error("VH NM Item Marker: Item grid container not found for MutationObserver."); }
     }
 
-    // Register Menu Commands
     if (typeof GM_registerMenuCommand === 'function') {
         GM_registerMenuCommand("Configure Color Scheme (VH NM)", showColorSchemeConfigPanel, "S");
         GM_registerMenuCommand("Clear All Marked Items (VH NM)", clearAllMarkedItems, "C");
     }
 
-    // --- SCRIPT EXECUTION ---
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         initializeItemMarker();
     } else { window.addEventListener('load', initializeItemMarker); }
