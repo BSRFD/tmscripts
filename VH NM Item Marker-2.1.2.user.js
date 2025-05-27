@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VH NM Item Marker
 // @namespace    http://tampermonkey.net/
-// @version      2.6
+// @version      2.7
 // @description  Marks Vine items (dbl-click). Configurable color schemes. Ctrl+Click "Go to Marked" to clear.
 // @author       BSRFD
 // @match        https://www.amazon.ca/vine/vine-items*
@@ -24,7 +24,7 @@
     const ITEM_SELECTOR = '.vvp-item-tile.vh-gridview';
     const MARKED_ITEM_CLASS_BLUE = 'vh-nm-marked-item-blue';
     const GO_TO_MARKED_BUTTON_ID = 'vh-nm-go-to-marked-button';
-    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.6_${window.location.hostname}`;
+    const STORAGE_KEY_MARKED_ASINS = `vhNmMarkedASINs_dblClick_v2.7_${window.location.hostname}`; // Version bump
     const DOUBLE_CLICK_TIMEOUT = 300;
 
     const COLOR_SCHEMES = {
@@ -35,7 +35,7 @@
         "fiery_red": { name: "Fiery Red", markedItemBg: '#ffccd5', markedItemBorder: '#d90429', goToButtonBg: '#ef233c', goToButtonHoverBg: '#bc1823' },
         "royal_purple": { name: "Royal Purple", markedItemBg: '#e0c3fc', markedItemBorder: '#7b2cbf', goToButtonBg: '#5a189a', goToButtonHoverBg: '#3c096c' }
     };
-    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.6_${window.location.hostname}`;
+    const CONFIG_KEY_SELECTED_SCHEME = `vhNmSelectedColorScheme_v2.7_${window.location.hostname}`; // Version bump
     let currentColorScheme = COLOR_SCHEMES["vibrant_blue"];
     let dynamicStyleTag = null;
 
@@ -67,24 +67,18 @@
             document.head.appendChild(dynamicStyleTag);
         }
         dynamicStyleTag.textContent = `
-            .${MARKED_ITEM_CLASS_BLUE} { /* Base style for our marked items */
+            .${MARKED_ITEM_CLASS_BLUE} {
                 background-color: ${activeScheme.markedItemBg} !important;
                 border: 2px solid ${activeScheme.markedItemBorder} !important;
                 box-shadow: 0 0 10px ${activeScheme.markedItemBorder} !important;
-                opacity: 1 !important; /* Ensure full opacity by default */
-                filter: brightness(1) !important; /* Ensure full brightness by default */
+                opacity: 1 !important;
+                filter: brightness(1) !important;
             }
-
-            /* Rule to make marked items that VH has faded more visible */
-            /* This targets items that have our mark AND VH's fade styles */
             ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity: 0.5"][style*="filter: brightness(0.7)"],
-            ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity:0.5"][style*="filter:brightness(0.7)"] /* no space */ {
-                opacity: 0.9 !important; /* Make it much less faded */
-                filter: brightness(0.95) !important; /* Make it much brighter */
+            ${ITEM_SELECTOR}.${MARKED_ITEM_CLASS_BLUE}[style*="opacity:0.5"][style*="filter:brightness(0.7)"] {
+                opacity: 0.9 !important;
+                filter: brightness(0.95) !important;
             }
-            /* You can adjust 0.9 and 0.95. Use 1 and brightness(1) for no fade at all. */
-
-
             #${GO_TO_MARKED_BUTTON_ID} {
                 position: fixed; bottom: 20px; right: 20px;
                 color: white; padding: 10px 15px; border: none; border-radius: 5px;
@@ -144,23 +138,72 @@
         saveMarksToStorage(); updateGoToButtonVisibility();
     }
 
+    // --- MODIFIED setupDoubleClickMarking ---
     function setupDoubleClickMarking(item) {
-        if (item.dataset.vhNmDblclickMarkingSetup === 'true') return;
+        if (!item || !item.dataset) {
+            // console.warn("VH NM Item Marker: setupDoubleClickMarking called with invalid item.", item);
+            return;
+        }
+        // Use a more specific dataset attribute to avoid conflict and ensure re-check if needed
+        const setupFlag = 'vhNmProcessedForMarking';
+
+        if (item.dataset[setupFlag] === 'true' && item.classList.contains(MARKED_ITEM_CLASS_BLUE) && persistedMarkedASINs.has(item.dataset.asin)) {
+            // Already set up and correctly marked, nothing to do
+            return;
+        }
+        // If it was marked as processed but isn't visually marked AND should be, we'll re-apply visual
+        // Or if it was never processed.
+
         const asin = item.dataset.asin;
-        if (asin && persistedMarkedASINs.has(asin)) { applyMarkToItemDOM(item); }
-        item.addEventListener('click', function(event) {
-            const asinForClick = this.dataset.asin;
-            if (!asinForClick) return;
-            if (event.target.tagName === 'A' || event.target.closest('A')) {}
-            if (!clickTimers[asinForClick]) {
-                clickTimers[asinForClick] = setTimeout(() => { delete clickTimers[asinForClick]; }, DOUBLE_CLICK_TIMEOUT);
-            } else {
-                clearTimeout(clickTimers[asinForClick]); delete clickTimers[asinForClick];
-                toggleMarkItem(this); event.preventDefault(); event.stopPropagation();
+        if (!asin) {
+            // console.warn("VH NM Item Marker: Item in setupDoubleClickMarking is missing data-asin.", item);
+            item.dataset[setupFlag] = 'true'; // Mark as processed to avoid loops on bad items
+            return;
+        }
+
+        // Apply visual mark if it's in persisted set
+        if (persistedMarkedASINs.has(asin)) {
+            if (!item.classList.contains(MARKED_ITEM_CLASS_BLUE)) {
+                // console.log("VH NM Item Marker: Re-applying visual mark to ASIN:", asin);
+                applyMarkToItemDOM(item);
             }
-        });
-        item.dataset.vhNmDblclickMarkingSetup = 'true';
+        } else {
+            // Ensure it's not visually marked if it's not in our persisted set
+            if (item.classList.contains(MARKED_ITEM_CLASS_BLUE)) {
+                // console.log("VH NM Item Marker: Removing lingering visual mark from ASIN:", asin);
+                removeMarkFromItemDOM(item);
+            }
+        }
+
+        // Add event listener only if not already added (or if we want to ensure it's the correct one)
+        // A simple way is to remove then add, or check for a specific listener if possible (hard)
+        // For now, let's rely on the setupFlag for the initial pass,
+        // but if an item is re-added, it might need listeners re-attached if the element is new.
+        // The current MutationObserver logic will call this for new DOM elements.
+
+        // If we are re-processing an item that somehow lost its listener but kept the flag,
+        // it's safer to remove any old one and add anew, but that's complex.
+        // Let's assume for now if the flag is set, the listener is also set.
+        // The main goal here is to ensure visual consistency if an item is re-added.
+
+        if (item.dataset[setupFlag] !== 'true') { // Only add listener once per DOM element instance
+            item.addEventListener('click', function(event) {
+                const asinForClick = this.dataset.asin;
+                if (!asinForClick) return;
+                if (event.target.tagName === 'A' || event.target.closest('A')) { return; }
+
+                if (!clickTimers[asinForClick]) {
+                    clickTimers[asinForClick] = setTimeout(() => { delete clickTimers[asinForClick]; }, DOUBLE_CLICK_TIMEOUT);
+                } else {
+                    clearTimeout(clickTimers[asinForClick]); delete clickTimers[asinForClick];
+                    toggleMarkItem(this); event.preventDefault(); event.stopPropagation();
+                }
+            });
+        }
+        item.dataset[setupFlag] = 'true';
     }
+    // --- END MODIFIED ---
+
 
     function scrollToNextMarkedItem() {
         const visibleMarkedItems = [];
@@ -200,7 +243,6 @@
         }
     }
 
-    // --- Config Panel ---
     function showColorSchemeConfigPanel() {
         let panel = document.getElementById('vh-nm-scheme-config-panel');
         let selectElement = null;
@@ -266,26 +308,52 @@
             goToButton.removeEventListener('click', handleGoToMarkedButtonClick);
             goToButton.addEventListener('click', handleGoToMarkedButtonClick);
         }
-        const initialItems = document.querySelectorAll(ITEM_SELECTOR);
-        initialItems.forEach(setupDoubleClickMarking);
+
+        // Process initially loaded items
+        document.querySelectorAll(ITEM_SELECTOR).forEach(setupDoubleClickMarking);
 
         const gridContainer = document.getElementById(ITEM_GRID_ID);
         if (gridContainer) {
+            // --- MODIFIED MutationObserver Callback ---
             const observer = new MutationObserver(mutationsList => {
-                let itemsAddedOrRemoved = false;
+                let itemsProcessedInThisMutation = false;
                 for (const mutation of mutationsList) {
                     if (mutation.type === 'childList') {
                         mutation.addedNodes.forEach(node => {
                             if (node.nodeType === Node.ELEMENT_NODE) {
-                                if (node.matches(ITEM_SELECTOR)) { setupDoubleClickMarking(node); itemsAddedOrRemoved = true; }
-                                else { node.querySelectorAll(ITEM_SELECTOR).forEach(setupDoubleClickMarking); if (node.querySelector(ITEM_SELECTOR)) itemsAddedOrRemoved = true; }
+                                // Check the node itself
+                                if (node.matches(ITEM_SELECTOR)) {
+                                    try {
+                                        setupDoubleClickMarking(node);
+                                        itemsProcessedInThisMutation = true;
+                                    } catch (e) {
+                                        console.error("VH NM Item Marker: Error in setupDoubleClickMarking for added node:", e, node);
+                                    }
+                                }
+                                // Check descendants of the added node
+                                node.querySelectorAll(ITEM_SELECTOR).forEach(itemNode => {
+                                    try {
+                                        setupDoubleClickMarking(itemNode);
+                                        itemsProcessedInThisMutation = true;
+                                    } catch (e) {
+                                        console.error("VH NM Item Marker: Error in setupDoubleClickMarking for descendant node:", e, itemNode);
+                                    }
+                                });
                             }
                         });
-                        mutation.removedNodes.forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && node.dataset && persistedMarkedASINs.has(node.dataset.asin)) { itemsAddedOrRemoved = true; } });
+                        // Check if a marked item was removed from DOM
+                        mutation.removedNodes.forEach(node => {
+                            if (node.nodeType === Node.ELEMENT_NODE && node.dataset && persistedMarkedASINs.has(node.dataset.asin)) {
+                                itemsProcessedInThisMutation = true; // To trigger button update
+                            }
+                        });
                     }
                 }
-                if (itemsAddedOrRemoved) { updateGoToButtonVisibility(); }
+                if (itemsProcessedInThisMutation) {
+                    updateGoToButtonVisibility();
+                }
             });
+            // --- END MODIFIED ---
             observer.observe(gridContainer, { childList: true, subtree: true });
         } else { console.error("VH NM Item Marker: Item grid container not found for MutationObserver."); }
     }
